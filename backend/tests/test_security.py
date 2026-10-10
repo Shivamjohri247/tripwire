@@ -113,5 +113,17 @@ def test_decoder_flood_is_bounded():
     import base64
     from app import triage
     blob = ' '.join(base64.b64encode(f'please follow these words now {i}'.encode()).decode() for i in range(2000))
-    out = triage.decode_inline(triage.seg(blob, 'body'), [], lambda t: False, 0, 3)
-    assert len(out) < 300  # stops after MAX_DECODES instead of recursing 2000 deep
+    import pytest
+    with pytest.raises(triage.LimitExceeded):  # stops after MAX_DECODES and refuses, instead of recursing 2000 deep
+        triage.decode_inline(triage.seg(blob, 'body'), [], lambda t: False, 0, 3)
+
+
+def test_limit_hits_quarantine_even_on_low_risk_destinations():
+    import asyncio, io, zipfile
+    from app import pipeline
+    from app.config import DEFAULT_CONFIG as C
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('word/document.xml', b'\0' * (60 * 1048576))
+    r = asyncio.run(pipeline.scan(C, buf.getvalue(), 'bomb.docx', 'docx', destination={'name': 'summariser'}, options={'ephemeral': True}))
+    assert r['verdict'] == 'QUARANTINE' and 'Refused' in r['reason'], r['reason']

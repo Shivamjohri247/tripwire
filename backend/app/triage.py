@@ -282,6 +282,10 @@ def pdf_segs(data):
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 
 
+class LimitExceeded(ValueError):
+    """Content that trips a resource limit. Always QUARANTINE: never treated as merely unparsed (which can fail open)."""
+
+
 MAX_UNZIPPED = 50 * 1048576  # a DOCX may not expand past 50 MB in total (zip-bomb guard)
 MAX_DECODES = 50  # base64/hex decodes per segment
 
@@ -289,7 +293,7 @@ MAX_DECODES = 50  # base64/hex decodes per segment
 def docx_segs(data):
     z = zipfile.ZipFile(io.BytesIO(data))
     if sum(i.file_size for i in z.infolist()) > MAX_UNZIPPED:
-        raise ValueError('archive expands past the 50 MB limit')
+        raise LimitExceeded('Word archive expands past the 50 MB limit')
     raw = []
 
     def parse(path, loc):
@@ -408,8 +412,10 @@ def reveal(segs, notes, looks_malicious, depth_max=3):
 
 def decode_inline(p, notes, looks_malicious, depth, depth_max, budget=None):
     budget = budget if budget is not None else [MAX_DECODES]  # shared across the recursion for one segment
-    if depth >= depth_max or budget[0] <= 0:
+    if depth >= depth_max:
         return [p]
+    if budget[0] <= 0 and B64.search(p.get('dec') or p['t']):  # undecoded payloads left: refuse rather than pass them unread
+        raise LimitExceeded(f'more than {MAX_DECODES} encoded payloads in one segment')
     src = p.get('dec') or p['t']
     for m in B64.finditer(src):
         try:

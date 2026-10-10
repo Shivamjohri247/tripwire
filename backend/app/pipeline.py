@@ -65,9 +65,9 @@ async def ocr(data, name, ctx, downscale):
     try:
         img = Image.open(io.BytesIO(data))
     except Image.DecompressionBombError as e:
-        raise ValueError(str(e)) from e
+        raise triage.LimitExceeded(str(e)) from e
     if img.width * img.height > MAX_PIXELS:
-        raise ValueError(f'image is {img.width}x{img.height}, over the {MAX_PIXELS // 1_000_000} MP limit')
+        raise triage.LimitExceeded(f'image is {img.width}x{img.height}, over the {MAX_PIXELS // 1_000_000} MP limit')
     img = img.convert('RGB')
     img.thumbnail((4096, 4096))  # the vision models read nothing finer than this
     scales = [1.0, 0.5] if downscale else [1.0]
@@ -103,6 +103,8 @@ async def parse_any(name, data, fmt, ctx, depth=0):
             sub = await parse_any(an, ad, af, ctx, depth + 1)
             out['segs'] += [{**s, 'loc': f"attachment {an} · {s['loc']}"} for s in sub['segs']]
             _ev(ctx, 'triage', 'signal', f'Attachment {an} parsed as {af} · {len(sub["segs"])} segments')
+        except triage.LimitExceeded:
+            raise  # a limit hit inside an attachment quarantines the whole message
         except Exception as e:
             out['segs'].append(triage.seg(f'[attachment {an} could not be parsed: {e}]\n', 'attachment', meta=True))
     return out
@@ -121,6 +123,13 @@ async def triage_node(state: S, config):
         return {'segs': [], 'meta': {**meta, 'oversize': True}, 'zone': 'oversize', 'risk': 1.0}
     try:
         parsed = await parse_any(name, data, fmt, ctx)
+        rules = sentinel.compile_rules(ctx['cfg'])
+        notes = []
+        segs = triage.reveal(parsed['segs'], notes, lambda t: any(r['re'].search(t) for r in rules), ctx['cfg']['policy'].get('decodeDepth', 3))
+    except triage.LimitExceeded as e:
+        _ev(ctx, 'triage', 'decision', f'Resource limit: {e}')
+        ctx['timings']['triage'] = int((T() - t0) * 1000)
+        return {'segs': [], 'meta': {**meta, 'oversize': True, 'limit': str(e)}, 'zone': 'oversize', 'risk': 1.0}
     except llm.LLMUnavailable as e:
         parsed = {'segs': [triage.seg(f'[image {name}: OCR unavailable ({e})]\n', 'image', meta=True)]}
         meta['unparsed'] = True
@@ -132,9 +141,9 @@ async def triage_node(state: S, config):
     if parsed.get('note'):
         _ev(ctx, 'triage', 'signal', parsed['note'])
     _ev(ctx, 'triage', 'decision', f"{len(parsed['segs'])} raw segments" + (f" · {parsed['pages']} pages" if parsed.get('pages') else ''))
-    rules = sentinel.compile_rules(ctx['cfg'])
-    notes = []
-    segs = triage.reveal(parsed['segs'], notes, lambda t: any(r['re'].search(t) for r in rules), ctx['cfg']['policy'].get('decodeDepth', 3))
+    if meta['unparsed']:  # the error branches above set parsed to a placeholder segment; reveal it the same way
+        notes = []
+        segs = triage.reveal(parsed['segs'], notes, lambda t: False, 1)
     for i, s in enumerate(segs):
         s['id'] = f'seg_{i + 1}'
     for n in list(dict.fromkeys(notes))[:6]:
@@ -378,7 +387,9 @@ async def adjudicate_node(state: S, config):
     neutralized = state.get('passes', 0) > 0
     why = None
     if zone == 'oversize':
-        verdict, why = 'QUARANTINE', f"File exceeds the {ctx['source'].get('maxMb', 10)} MB source limit and was not forwarded."
+        lim = (state.get('meta') or {}).get('limit')
+        verdict, why = 'QUARANTINE', (f'Refused: {lim}. Content was not forwarded.' if lim
+                                      else f"File exceeds the {ctx['source'].get('maxMb', 10)} MB source limit and was not forwarded.")
     elif zone == 'unparsed':
         verdict = 'ESCALATE' if dest['risk'] == 'high' else 'ALLOW'
         degraded = True
