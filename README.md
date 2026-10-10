@@ -12,7 +12,7 @@ Built for the ET AI Hackathon (Agentic Edition), Problem 2, by team shivam-johri
 | --- | --- |
 | Pitch deck | [Tripwire-Pitch.pdf](docs/Tripwire-Pitch.pdf) · [.pptx](docs/Tripwire-Pitch.pptx) |
 | Architecture | [Tripwire-Architecture.pptx](docs/Tripwire-Architecture.pptx) |
-| Demo video | [Google Drive](https://drive.google.com/file/d/19DZaN812Qx6dVLCkwEZqdcfvp5ug8dN8/view?usp=sharing) · [tripwire-demo.mp4](docs/tripwire-demo.mp4) |
+| Demo video | [Google Drive](https://drive.google.com/file/d/1exHU1Xh7PhOjcHhK7TdqmIOxanOLiFxQ/view?usp=sharing) · [tripwire-demo.mp4](docs/tripwire-demo.mp4) |
 | Screenshots | [docs/screens](docs/screens) |
 
 ## How it works
