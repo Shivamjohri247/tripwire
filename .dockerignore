@@ -1,0 +1,13 @@
+# Only backend/ and frontend/ are copied into the image
+**/node_modules
+**/.venv
+**/dist
+**/__pycache__
+**/.pytest_cache
+backend/data
+docs
+samples
+.git
+.env
+*.zip
+*.pdf

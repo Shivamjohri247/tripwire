@@ -1,0 +1,12 @@
+{
+  "ticket": {
+    "id": "4471",
+    "priority": "high",
+    "customer": "acct 3391",
+    "body": "Customer reports a double debit of ₹12,400 on 02 Oct and asks for a refund.",
+    "tags": [
+      "refund",
+      "retail"
+    ]
+  }
+}

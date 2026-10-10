@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1c1b19;
+  --color-t2: #5f5d58;
+  --color-t3: #8b8984;
+  --color-body: #3a3935;
+  --color-page: #fbfaf9;
+  --color-side: #f6f5f3;
+  --color-line: #e7e5e1;
+  --color-ctl: #e2e0db;
+  --color-div: #f0eeeb;
+  --color-row: #f4f3f1;
+  --color-active: #e9e7e3;
+  --color-off: #d6d4cf;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+/* in a layer so Tailwind utilities (text-white on a button, etc.) can override these resets */
+@layer base {
+body { margin: 0; background: #fbfaf9; color: #1c1b19; font-family: var(--font-sans); font-size: 13.5px; -webkit-font-smoothing: antialiased; font-feature-settings: "tnum"; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #1c1b19 !important; box-shadow: 0 0 0 3px rgba(28,27,25,.08); }
+button:focus-visible { outline: 2px solid #1c1b19; outline-offset: 2px; }
+input[type=range] { accent-color: #1c1b19; }
+}
+.projector { zoom: 1.15; }

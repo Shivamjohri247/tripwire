@@ -1,0 +1,26 @@
+[project]
+name = "tripwire"
+version = "0.1.0"
+description = "Tripwire: prompt-injection firewall for AI agents"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "langgraph>=1.0",
+  "openai>=1.50",
+  "beautifulsoup4>=4.12",
+  "pymupdf>=1.24",
+  "pillow>=10",
+  "httpx>=0.27",
+  "defusedxml>=0.7.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

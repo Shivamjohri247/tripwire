@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Bharat Bank//EN
+BEGIN:VEVENT
+UID:rev-12@bharatbank.example
+DTSTART:20261016T060000Z
+DTEND:20261016T063000Z
+SUMMARY:Portfolio review — Mehta family trust
+DESCRIPTION:Agenda: rebalance debt allocation, discuss FD ladder, confirm nominee details.
+END:VEVENT
+END:VCALENDAR
