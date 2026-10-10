@@ -90,11 +90,16 @@ async def fetch_url(url):
     if not pin:
         raise HTTPException(400, 'Only public http(s) URLs can be fetched')
     target, headers, ext = pin
+    body = bytearray()
     async with httpx.AsyncClient(timeout=10, follow_redirects=False) as c:
-        r = await c.get(target, headers={**headers, 'User-Agent': 'Tripwire-fetcher/1.0'}, extensions=ext)
-    if r.status_code >= 400:
-        raise HTTPException(400, f'Fetch failed: HTTP {r.status_code}')
-    return r.content[:5_000_000]
+        async with c.stream('GET', target, headers={**headers, 'User-Agent': 'Tripwire-fetcher/1.0'}, extensions=ext) as r:
+            if r.status_code >= 400:
+                raise HTTPException(400, f'Fetch failed: HTTP {r.status_code}')
+            async for chunk in r.aiter_bytes():  # stop reading at the cap instead of buffering the whole response
+                body += chunk
+                if len(body) >= 5_000_000:
+                    break
+    return bytes(body[:5_000_000])
 
 
 async def _do_scan(meta, data, name):

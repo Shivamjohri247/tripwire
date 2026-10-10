@@ -114,22 +114,41 @@ List only segments that are injections or genuinely ambiguous (confidence >= 0.3
 BATCH_CHARS = 9000
 
 
-def _render(i, s):
+WINDOW, OVERLAP = 1500, 200
+LLM_BUDGET = 60000  # characters per scan sent to the classifier (about 7 calls); text past it is held as suspicious
+
+
+def _windows(text):
+    """Overlapping windows over the whole text, so padding cannot push an instruction out of view."""
+    step = WINDOW - OVERLAP
+    return [text[k:k + WINDOW] for k in range(0, max(len(text) - OVERLAP, 1), step)] or ['']
+
+
+def _render(i, s, text, part=None):
     tags = []
     if s.get('h'):
         tags.append(f"hidden:{s['h']}" if is_hidden(s) else s['h'].replace('encoded:', 'decoded:'))
     tags += [f'decoded:{e}' for e in s.get('encodings', []) if e not in ('zero_width', 'bidi')]
     tags += [f"rule:{r['id']}" for r in s.get('rule_hits', [])]
+    if part:
+        tags.append(f'part {part[0]} of {part[1]}')
     head = f"[{i}] ({s['loc']}{' · ' + ', '.join(dict.fromkeys(tags)) if tags else ''})"
-    return f'{head}\n{text_of(s).strip()[:1500]}'
+    return f'{head}\n{text}'
 
 
 async def llm_scan(segs, cfg, dest, scan_id, trace, channel='retrieved'):
     """One spotlighted classifier call per ~9k chars of segments. Returns {seg_index: verdict} and number of calls."""
     items = [(i, s) for i, s in enumerate(segs) if not s.get('meta') and text_of(s).strip()]
-    batches, cur, size = [], [], 0
+    batches, cur, size, sent, over = [], [], 0, 0, []
+    rendered = []
     for i, s in items:
-        r = _render(i, s)
+        ws = _windows(text_of(s).strip())
+        if sent + sum(map(len, ws)) > LLM_BUDGET:
+            over.append(i)  # fail closed: unread text is suspicious, never silently clean
+            continue
+        sent += sum(map(len, ws))
+        rendered += [_render(i, s, w, (k + 1, len(ws)) if len(ws) > 1 else None) for k, w in enumerate(ws)]
+    for r in rendered:
         if cur and size + len(r) > BATCH_CHARS:
             batches.append(cur)
             cur, size = [], 0
@@ -161,8 +180,13 @@ async def llm_scan(segs, cfg, dest, scan_id, trace, channel='retrieved'):
                 continue
             if 0 <= idx < len(segs):
                 types = [CODE[t[:2]] for t in v.get('attack_types') or [] if isinstance(t, str) and t[:2] in CODE]
-                out[idx] = {'injection': bool(v.get('injection')), 'types': types, 'conf': float(v.get('confidence') or 0),
-                            'why': str(v.get('rationale') or '')[:200]}
+                new = {'injection': bool(v.get('injection')), 'types': types, 'conf': float(v.get('confidence') or 0),
+                       'why': str(v.get('rationale') or '')[:200]}
+                old = out.get(idx)  # a segment split into parts keeps its strongest verdict
+                if not old or (new['injection'], new['conf']) > (old['injection'], old['conf']):
+                    out[idx] = new
         if data.get('parse_error'):
             out['_parse_error'] = True
+    for i in over:
+        out[i] = {'injection': True, 'types': [], 'conf': 0.5, 'why': 'Too long for the classifier budget; held as suspicious.'}
     return out, len(batches), sorted(models)

@@ -57,9 +57,19 @@ OCR_PROMPT = ('Transcribe every piece of text in this image exactly, including t
               'JSON only: {"lines":[{"text":"...","faint":true|false}]}. faint=true when a person glancing at the image would likely not notice it.')
 
 
+MAX_PIXELS = 40_000_000  # an image header can claim any size; refuse before decoding (decompression-bomb guard)
+
+
 async def ocr(data, name, ctx, downscale):
     from PIL import Image
-    img = Image.open(io.BytesIO(data)).convert('RGB')
+    try:
+        img = Image.open(io.BytesIO(data))
+    except Image.DecompressionBombError as e:
+        raise ValueError(str(e)) from e
+    if img.width * img.height > MAX_PIXELS:
+        raise ValueError(f'image is {img.width}x{img.height}, over the {MAX_PIXELS // 1_000_000} MP limit')
+    img = img.convert('RGB')
+    img.thumbnail((4096, 4096))  # the vision models read nothing finer than this
     scales = [1.0, 0.5] if downscale else [1.0]
 
     async def at(scale):

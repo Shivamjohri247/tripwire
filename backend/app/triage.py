@@ -282,8 +282,14 @@ def pdf_segs(data):
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 
 
+MAX_UNZIPPED = 50 * 1048576  # a DOCX may not expand past 50 MB in total (zip-bomb guard)
+MAX_DECODES = 50  # base64/hex decodes per segment
+
+
 def docx_segs(data):
     z = zipfile.ZipFile(io.BytesIO(data))
+    if sum(i.file_size for i in z.infolist()) > MAX_UNZIPPED:
+        raise ValueError('archive expands past the 50 MB limit')
     raw = []
 
     def parse(path, loc):
@@ -400,8 +406,9 @@ def reveal(segs, notes, looks_malicious, depth_max=3):
     return [s for s in out if s['t'] != '']
 
 
-def decode_inline(p, notes, looks_malicious, depth, depth_max):
-    if depth >= depth_max:
+def decode_inline(p, notes, looks_malicious, depth, depth_max, budget=None):
+    budget = budget if budget is not None else [MAX_DECODES]  # shared across the recursion for one segment
+    if depth >= depth_max or budget[0] <= 0:
         return [p]
     src = p.get('dec') or p['t']
     for m in B64.finditer(src):
@@ -410,12 +417,13 @@ def decode_inline(p, notes, looks_malicious, depth, depth_max):
         except (binascii.Error, UnicodeDecodeError, ValueError):
             continue
         if printable(d) >= 0.9 and re.search(r'[a-z]{3,}\s+[a-z]{2,}', d, re.I):
+            budget[0] -= 1
             notes.append(f'Decoded base64 ({len(m.group(0))} chars)')
             before, after = src[:m.start()], src[m.end():]
             mid = seg(m.group(0), p['loc'], 'encoded:base64', dec=d, vis=True, enc=True, encodings=[*p.get('encodings', []), 'base64'])
             base = {k: v for k, v in p.items() if k != 'dec'}
-            return ([{**base, 't': before}] if before else []) + decode_inline(mid, notes, looks_malicious, depth + 1, depth_max) + \
-                (decode_inline({**base, 't': after}, notes, looks_malicious, depth, depth_max) if after else [])
+            return ([{**base, 't': before}] if before else []) + decode_inline(mid, notes, looks_malicious, depth + 1, depth_max, budget) + \
+                (decode_inline({**base, 't': after}, notes, looks_malicious, depth, depth_max, budget) if after else [])
     hm = HEX.search(src)
     if hm:
         try:
